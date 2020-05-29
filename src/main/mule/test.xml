@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="5cb2c1f8-6379-4938-b990-6d6885d225d0" >
+		<http:listener-connection host="0.0.0.0" port="8082" />
+	</http:listener-config>
+	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="29016190-f18a-4b72-b1c8-5ec468cf3cb6" >
+		<http:request-connection host="localhost" port="8082" />
+	</http:request-config>
+	<flow name="testFlow" doc:id="00195e84-dbbb-458c-adbb-92cb067314e7">
+		<http:listener doc:name="Listener" doc:id="e59d70f5-5037-4810-80b4-83e464b3f679" config-ref="HTTP_Listener_config" path="/compare" />
+		<scatter-gather doc:name="Scatter-Gather" doc:id="905f32d6-e1b3-4c60-92d7-e6edc650ed91" >
+			<route >
+				<http:request method="GET" doc:name="riskRequest" doc:id="ef47fb16-680b-4de5-8f9a-02eb3a538b68" config-ref="HTTP_Request_configuration" path="/risk"/>
+			</route>
+			<route >
+				<http:request method="GET" doc:name="customRequest" doc:id="6ae21244-3a41-49d0-9155-ca2927d331ba" config-ref="HTTP_Request_configuration" path="/custom"/>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Transform Message" doc:id="b03996ff-4157-44c4-a0eb-0b947a259e95">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var risk = payload..payload[0].Results
+var custom = payload..payload[1].results.countries reduce ((val, acc) -> acc ++ val)
+---
+{
+Results:
+[
+ risk map (risk) ->
+	{
+		CountryId : risk.CountryId,
+		CountryName : risk.CountryName,
+		ISO2 : risk.ISO2,
+		ISO3 : risk.ISO3,
+		Region : {
+			RegionId : risk.Region.RegionId,
+			Name : risk.Region.Name
+		},
+		
+		(custom filter ($.*countryName contains risk.CountryName) map (custom) -> {
+      		RiskRatings : 
+      			{
+      				//TravelRiskRating : custom.riskRatings.travelRiskRating,
+      				TravelRiskRating : if (not isEmpty(custom.riskRatings.travelRiskRating)) (custom.riskRatings.travelRiskRating) else (risk.RiskRatings.TravelRiskRating),
+      				TravelAdvisoryLevel : risk.RiskRatings.TravelAdvisoryLevel,
+      				//MedicalRiskRating : custom.riskRatings.medicalRiskRating,
+      				MedicalRiskRating : if (not isEmpty(custom.riskRatings.MedicalRiskRating)) (custom.riskRatings.MedicalRiskRating) else (risk.RiskRatings.MedicalRiskRating),
+      				VariableMedicalRiskRating : risk.RiskRatings.VariableMedicalRiskRating
+      			}
+    	}),
+    	Zones : risk.Zones
+		
+		
+	}]
+}
+	]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="0958a1fa-3de4-4cc4-8309-344aec40025c" />
+	</flow>
+	<flow name="riskWebserviceCall" doc:id="953b1031-29fb-4b94-b610-3c98badcfdd5">
+		<http:listener doc:name="Listener" doc:id="f5e5f006-d8a3-46c6-8532-1c9777faf091" config-ref="HTTP_Listener_config" path="/risk" />
+		<set-payload value='#[output applicatio/json ---
+{
+    "Results": [
+        {
+            "CountryId": 1,
+            "CountryName": "Afghanistan",
+            "ISO2": "AF",
+            "ISO3": "AFG",
+            "Region": {
+                "RegionId": 10,
+                "Name": "Asia &amp; the Pacific"
+            },
+            "RiskRatings": {
+                "TravelRiskRating": {
+                    "Rating": 5,
+                    "Name": "Extreme"
+                },
+                "TravelAdvisoryLevel": {
+                    "Rating": 3,
+                    "Name": "Do not go"
+                },
+                "MedicalRiskRating": {
+                    "Rating": 5,
+                    "Name": "Extreme"
+                },
+                "VariableMedicalRiskRating": {
+                    "Rating": 5,
+                    "Name": "Extreme"
+                }
+            },
+            "Zones": [
+                {
+                    "ZoneId": 209,
+                    "ZoneName": "Mazar-e-Sharif city, Bamyan, Daykundi, Saripul and Samangan provinces",
+                    "TravelRiskRating": {
+                        "Rating": 5,
+                        "Name": "Extreme"
+                    },
+                    "MedicalRiskRating": {
+                        "Rating": 5,
+                        "Name": "Extreme"
+                    }
+                },
+                {
+                    "ZoneId": 456,
+                    "ZoneName": "Kabul",
+                    "TravelRiskRating": {
+                        "Rating": 5,
+                        "Name": "Extreme"
+                    },
+                    "MedicalRiskRating": {
+                        "Rating": 5,
+                        "Name": "Extreme"
+                    }
+                },
+                {
+                    "ZoneId": 457,
+                    "ZoneName": "Helmand, Kandahar, Zabul, Ghazni, Paktika, Khost, Paktika, Kunar, Nangarhar and Baghlan provinces",
+                    "TravelRiskRating": {
+                        "Rating": 5,
+                        "Name": "Extreme"
+                    },
+                    "MedicalRiskRating": {
+                        "Rating": 5,
+                        "Name": "Extreme"
+                    }
+                }
+            ]
+        },
+        {
+            "CountryId": 3,
+            "CountryName": "Albania",
+            "ISO2": "AL",
+            "ISO3": "ALB",
+            "Region": {
+                "RegionId": 12,
+                "Name": "Europe &amp; CIS"
+            },
+            "RiskRatings": {
+                "TravelRiskRating": {
+                    "Rating": 2,
+                    "Name": "Low"
+                },
+                "TravelAdvisoryLevel": {
+                    "Rating": 1,
+                    "Name": "Proceed as normal"
+                },
+                "MedicalRiskRating": {
+                    "Rating": 3,
+                    "Name": "Medium"
+                },
+                "VariableMedicalRiskRating": {
+                    "Rating": 2,
+                    "Name": "Low"
+                }
+            },
+            "Zones": []
+        },
+        {
+            "CountryId": 4,
+            "CountryName": "Algeria",
+            "ISO2": "DZ",
+            "ISO3": "DZA",
+            "Region": {
+                "RegionId": 13,
+                "Name": "Mid East &amp; N Africa"
+            },
+            "RiskRatings": {
+                "TravelRiskRating": {
+                    "Rating": 4,
+                    "Name": "High"
+                },
+                "TravelAdvisoryLevel": {
+                    "Rating": 3,
+                    "Name": "Do not go"
+                },
+                "MedicalRiskRating": {
+                    "Rating": 4,
+                    "Name": "High"
+                },
+                "VariableMedicalRiskRating": {
+                    "Rating": 3,
+                    "Name": "Medium"
+                }
+            },
+            "Zones": [
+                {
+                    "ZoneId": 429,
+                    "ZoneName": "Urban centres in northern provinces; oil- and gas-producing sites in Adrar, Tamanrasset, Illizi, Ouargla and Ghardaia provinces",
+                    "TravelRiskRating": {
+                        "Rating": 3,
+                        "Name": "Medium"
+                    },
+                    "MedicalRiskRating": {
+                        "Rating": 4,
+                        "Name": "High"
+                    }
+                },
+                {
+                    "ZoneId": 521,
+                    "ZoneName": "Southern Algeria",
+                    "TravelRiskRating": {
+                        "Rating": 4,
+                        "Name": "High"
+                    },
+                    "MedicalRiskRating": {
+                        "Rating": 4,
+                        "Name": "High"
+                    }
+                }
+            ]
+        }
+	]
+}]' doc:name="riskpayload" doc:id="54912cd0-9c99-447d-8c61-cfbea5be3b7a" />
+	</flow>
+	<flow name="customwebserviceCall" doc:id="b84bc22c-ad6f-4779-aa6a-0af70c6bb7b0" >
+		<http:listener doc:name="Listener" doc:id="984fff68-d077-4157-b856-938a4f9e4003" config-ref="HTTP_Listener_config" path="/custom"/>
+		<set-payload value='#[output application/json ---
+{
+    "results": [
+        {
+            "salesForceAccountId": 45821,
+            "countries": [
+                {
+                    "countryName": "Afghanistan",
+                    "iso2": "AF",
+                    "riskRatings": {
+                        "travelRiskRating": {
+                            "rating": 5,
+                            "name": "Extreme"
+                        },
+                        "medicalRiskRating": {
+                            "rating": 5,
+                            "name": "Extreme"
+                        }
+                    }
+                },
+                {
+                    "countryName": "Albania",
+                    "iso2": "AL",
+                    "riskRatings": {
+                        "travelRiskRating": {
+                            "rating": 3,
+                            "name": "Medium"
+                        },
+                        "medicalRiskRating": {
+                            "rating": 4,
+                            "name": "High"
+                        }
+                    }
+                },
+                {
+                   "countryName": "Algeria",
+                    "iso2": "DZ",
+                    "riskRatings": {
+                        "travelRiskRating": {
+                            "rating": 4,
+                            "name": "High"
+                        },
+                        "medicalRiskRating": {
+                            "rating": 4,
+                            "name": "High"
+                        }
+                    }
+                }
+			]
+		}
+	]
+}]' doc:name="customPayload" doc:id="5499bd31-06a9-4c66-9195-d1cfabb40e5a" />
+	</flow>
+</mule>
